@@ -1,0 +1,87 @@
+---
+title: "ML week4"
+author: "Deepthi Shivram"
+date: "9/15/2018"
+output: html_document
+---
+
+## Introduction
+###Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(lattice)
+library(ggplot2)
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(corrplot)
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(trainUrl),na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(testUrl), na.strings=c("NA","#DIV/0!",""))
+```
+
+## Cleaning the Data
+
+Remove all columns that contains NA and remove features that are not in the testing dataset. The features containing NA are the variance, mean and standard devition (SD) within each window for each feature. Since the testing dataset has no time-dependence, these values are useless and can be disregarded. We will also remove the first 7 features since they are related to the time-series or are not numeric
+
+```{r cleaning}
+clnColumnIndex <- colSums(is.na(training))/nrow(training) < 0.95
+clean_training_data <- training[,clnColumnIndex]
+clean_training_data <- clean_training_data[,-c(1:7)]
+clean_test_data <- testing[,-c(1:7)]
+
+```
+
+## Dataset partition
+
+Following the recommendation in the course Practical Machine Learning, we will split our data into a training data set (60% of the total cases) and a testing data set (40% of the total cases; the latter should not be confused with the data in the pml-testing.csv file). This will allow us to estimate the out of sample error of our predictor.
+
+```{r pressure}
+set.seed(12345)
+
+inTrainIndex <- createDataPartition(clean_training_data$classe, p=0.75)[[1]]
+training_training_data <- clean_training_data[inTrainIndex,]
+training_crossval_data <- clean_training_data[-inTrainIndex,]
+allNames <- names(clean_training_data)
+clean_test_data <- testing[,allNames[1:52]]
+
+```
+
+## decision tree
+
+Using Decision Tree, we shouldn’t expect the accuracy to be high. In fact, anything around 80% would be acceptable.
+
+```{r decision tree}
+
+decisionTreeMod <- train(classe ~., method='rpart', data=training_training_data)
+decisionTreePrediction <- predict(decisionTreeMod, training_crossval_data)
+confusionMatrix(training_crossval_data$classe, decisionTreePrediction)
+rpart.plot(decisionTreeMod$finalModel)
+
+```
+
+##ML Algorithm - Random Forest
+
+Using random forest, the out of sample error should be small. The error will be estimated using the 40% testing sample. We should expect an error estimate of < 3%.
+
+```{r random forest}
+
+rfMod <- train(classe ~., method='rf', data=training_training_data, ntree=128)
+rfPrediction <- predict(rfMod, training_crossval_data)
+confusionMatrix(training_crossval_data$classe, rfPrediction)
+
+```
+
+##Predicting on Test Data Set
+```{r prediction}
+
+predict(rfMod, clean_test_data)
+
+```
+
+##Conclusion
+
+So, the estimated accuracy of the model is 99.32% and the estimated out-of-sample error is 0.68%
